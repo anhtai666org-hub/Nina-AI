@@ -20,15 +20,22 @@ try {
   console.warn("[STARTUP]", startupError);
 }
 
-const debouncer = new MessageDebouncer(2000, async (message) => {
+const debouncer = new MessageDebouncer(2000, async (messages) => {
   if (!nina) {
     console.error("[NINA ERROR]", startupError || "Nina is not initialized.");
     return;
   }
 
+  const latest = messages[messages.length - 1];
+
   try {
-    const reply = await nina.generateReply(message);
-    console.log(`[NINA] -> ${message.senderName}: ${reply}`);
+    for (const message of messages) {
+      nina.addMessage(message);
+    }
+
+    const reply = await nina.generateReply(latest, { alreadyAdded: true });
+
+    console.log(`[NINA] -> ${latest.senderName}: ${reply}`);
   } catch (error) {
     console.error("[NINA ERROR]", error);
   }
