@@ -12,28 +12,34 @@ app.use(express.json());
 let nina = null;
 let startupError = null;
 
-try {
-  const model = createNinaModel();
-  nina = new NinaCore({ model });
-} catch (error) {
-  startupError = error.message;
-  console.warn("[STARTUP]", startupError);
+function ensureNina() {
+  if (nina) return nina;
+
+  try {
+    const model = createNinaModel();
+    nina = new NinaCore({ model });
+    startupError = null;
+    console.log("[NINA] Gemini model initialized.");
+    return nina;
+  } catch (error) {
+    startupError = error.message;
+    throw error;
+  }
 }
 
 const debouncer = new MessageDebouncer(2000, async (messages) => {
-  if (!nina) {
-    console.error("[NINA ERROR]", startupError || "Nina is not initialized.");
-    return;
-  }
-
   const latest = messages[messages.length - 1];
 
   try {
+    const bot = ensureNina();
+
+    // Keep every message from the 2-second burst in memory,
+    // while using the latest message as the one Nina answers.
     for (const message of messages) {
-      nina.addMessage(message);
+      bot.addMessage(message);
     }
 
-    const reply = await nina.generateReply(latest, { alreadyAdded: true });
+    const reply = await bot.generateReply(latest, { alreadyAdded: true });
 
     console.log(`[NINA] -> ${latest.senderName}: ${reply}`);
   } catch (error) {
@@ -45,7 +51,7 @@ app.get("/", (_req, res) => {
   res.json({
     name: "Nina AI — にな",
     status: "online",
-    version: "0.2.0"
+    version: "0.2.1"
   });
 });
 
