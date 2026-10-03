@@ -10,19 +10,30 @@ export class MessageDebouncer {
     if (!id) throw new Error("conversationId is required.");
 
     const existing = this.pending.get(id);
-    if (existing) clearTimeout(existing.timer);
+    if (existing) {
+      clearTimeout(existing.timer);
+      existing.messages.push(message);
+    } else {
+      this.pending.set(id, { messages: [message], timer: null });
+    }
 
-    const timer = setTimeout(async () => {
+    const pending = this.pending.get(id);
+
+    pending.timer = setTimeout(async () => {
       this.pending.delete(id);
-      await this.onFlush(message);
-    }, this.delay);
 
-    this.pending.set(id, { timer, message });
+      try {
+        await this.onFlush([...pending.messages]);
+      } catch (error) {
+        console.error("[DEBOUNCE ERROR]", error);
+      }
+    }, this.delay);
   }
 
   clear(conversationId) {
     const pending = this.pending.get(conversationId);
     if (!pending) return;
+
     clearTimeout(pending.timer);
     this.pending.delete(conversationId);
   }
