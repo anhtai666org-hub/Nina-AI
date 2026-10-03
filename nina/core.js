@@ -1,11 +1,20 @@
 import { ConversationMemory } from "../memory/context.js";
+import { generateNinaReply } from "../gemini/client.js";
 
 const SYSTEM_PROMPT = `Bạn là Nina AI — にな.
+
 Bạn là một trợ lý trò chuyện tự nhiên trong TikTok Chat.
-- Trả lời như một người đang trò chuyện, không tự nhận là Gemini.
-- Với group chat, chú ý tên người gửi và ngữ cảnh.
+
+Quy tắc:
+- Không tự nhận mình là Gemini.
+- Tên của bạn là Nina.
+- Trả lời tự nhiên như đang nhắn tin.
+- Với group chat, chú ý tên người gửi.
+- Có thể gọi người dùng bằng tên khi phù hợp.
+- Dùng lịch sử trò chuyện để hiểu ngữ cảnh.
 - Không tự bịa thông tin về người dùng.
-- Trả lời ngắn gọn, tự nhiên, phù hợp với ngữ cảnh.`;
+- Không cần nhắc lại toàn bộ lịch sử.
+- Ưu tiên câu trả lời ngắn gọn, tự nhiên.`;
 
 export class NinaCore {
   constructor({ model, memory = new ConversationMemory() }) {
@@ -14,8 +23,9 @@ export class NinaCore {
   }
 
   addMessage(message) {
-    const conversationId = message.conversationId;
-    if (!conversationId) throw new Error("conversationId is required.");
+    if (!message.conversationId) {
+      throw new Error("conversationId is required.");
+    }
 
     const normalized = {
       role: message.role || "user",
@@ -25,36 +35,41 @@ export class NinaCore {
       timestamp: message.timestamp || Date.now()
     };
 
-    return this.memory.add(conversationId, normalized);
+    return this.memory.add(message.conversationId, normalized);
   }
 
   buildPrompt(conversationId, latestMessage) {
     const context = this.memory.get(conversationId);
-    const type = latestMessage.chatType === "group" ? "group" : "private";
+    const chatType = latestMessage.chatType === "group" ? "group" : "private";
 
-    const lines = context.map(m =>
-      `[${m.role}] ${m.senderName}: ${m.text}`
+    const lines = context.map(
+      (m) => `[${m.role}] ${m.senderName}: ${m.text}`
     );
 
     return [
       SYSTEM_PROMPT,
-      `Chat type: ${type}`,
-      latestMessage.replyTo
-        ? `Replying to: ${latestMessage.replyTo}`
-        : "",
+      "",
+      `Chat type: ${chatType}`,
+      `Current sender: ${latestMessage.senderName}`,
+      "",
       "Recent conversation:",
-      ...lines
-    ].filter(Boolean).join("\n");
+      ...lines,
+      "",
+      "Respond as Nina."
+    ].join("\n");
   }
 
-  async generateReply(latestMessage) {
-    const context = this.addMessage(latestMessage);
-    const prompt = this.buildPrompt(latestMessage.conversationId, latestMessage);
+  async generateReply(message) {
+    this.addMessage(message);
 
-    const result = await this.model.generateContent(prompt);
-    const text = result.response.text().trim();
+    const prompt = this.buildPrompt(
+      message.conversationId,
+      message
+    );
 
-    this.memory.add(latestMessage.conversationId, {
+    const text = await generateNinaReply(this.model, prompt);
+
+    this.memory.add(message.conversationId, {
       role: "assistant",
       senderId: "nina",
       senderName: "Nina",
@@ -62,6 +77,6 @@ export class NinaCore {
       timestamp: Date.now()
     });
 
-    return { text, context };
+    return text;
   }
 }
