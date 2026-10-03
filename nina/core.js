@@ -59,8 +59,10 @@ export class NinaCore {
     ].join("\n");
   }
 
-  async generateReply(message) {
-    this.addMessage(message);
+  async generateReply(message, { alreadyAdded = false } = {}) {
+    if (!alreadyAdded) {
+      this.addMessage(message);
+    }
 
     const prompt = this.buildPrompt(
       message.conversationId,
